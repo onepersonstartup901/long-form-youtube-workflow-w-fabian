@@ -1,0 +1,35 @@
+# Environment and secrets
+.env
+.env.*
+credentials.json
+token.json
+
+# Temp and cache
+.tmp/
+__pycache__/
+*.pyc
+.ruff_cache/
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large media files
+*.mp4
+*.mov
+*.wav
+*.mp3
+*.mkv
+*.avi
+
+# Tool configs
+.playwright-mcp/
+.serena/
+
+# Local memory files
+MEMORY.md
+
+# Build artifacts
+package-lock.json
+.coverage
