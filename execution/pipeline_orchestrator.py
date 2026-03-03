@@ -13,11 +13,29 @@ import subprocess
 import argparse
 import time
 import re
+import logging
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Optional Google Sheet integration
+# ---------------------------------------------------------------------------
+_SHEET_SYNC_AVAILABLE = False
+try:
+    # sheet_tracker.py lives in the same directory as this file.
+    # Use sys.path to ensure the import works regardless of cwd.
+    _exec_dir = str(Path(__file__).parent)
+    if _exec_dir not in sys.path:
+        sys.path.insert(0, _exec_dir)
+    from sheet_tracker import sync_video_to_sheet  # type: ignore[import-untyped]
+    _SHEET_SYNC_AVAILABLE = True
+except Exception:
+    pass
 
 PROJECT_ROOT = Path(__file__).parent.parent
 EXECUTION_DIR = Path(__file__).parent
@@ -80,7 +98,12 @@ def load_state(video_id: str) -> dict:
 
 
 def save_state(video_id: str, state: dict):
-    """Save video state atomically (write to temp, then rename)."""
+    """Save video state atomically (write to temp, then rename).
+
+    Also syncs the state to the Google Sheet production tracker if
+    PIPELINE_SHEET_ID is configured. Sheet errors are logged but never
+    raised so the pipeline keeps running.
+    """
     state_path = get_video_dir(video_id) / "state.json"
     tmp_path = state_path.with_suffix(".json.tmp")
     state["updated_at"] = datetime.now().isoformat()
@@ -96,6 +119,13 @@ def save_state(video_id: str, state: dict):
     with open(tmp_path, "w") as f:
         json.dump(state, f, indent=2)
     os.replace(str(tmp_path), str(state_path))
+
+    # --- Sync to Google Sheet (best-effort) ---
+    if _SHEET_SYNC_AVAILABLE:
+        try:
+            sync_video_to_sheet(video_id, state)
+        except Exception as e:
+            logger.warning("Sheet sync skipped for %s: %s", video_id, e)
 
 
 STAGE_TIMEOUTS = {
