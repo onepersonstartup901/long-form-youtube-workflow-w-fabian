@@ -83,7 +83,7 @@ Generate:
 Return as JSON only. No other text."""
 
     message = client.messages.create(
-        model="claude-sonnet-4-5-20250514",
+        model="claude-sonnet-4-20250514",
         max_tokens=3000,
         messages=[{"role": "user", "content": prompt}]
     )

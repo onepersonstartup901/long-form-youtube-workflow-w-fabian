@@ -7,6 +7,7 @@ Supports full scripts, bullet outlines, and hybrid formats.
 """
 
 import os
+import re
 import sys
 import json
 import argparse
@@ -143,7 +144,7 @@ Structure:
 Add approximate timestamps throughout."""
 
     message = client.messages.create(
-        model="claude-sonnet-4-5-20250514",
+        model="claude-sonnet-4-20250514",
         max_tokens=4000,
         system=SCRIPT_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
@@ -206,7 +207,7 @@ Current script:
 Return the complete refined script."""
 
     message = client.messages.create(
-        model="claude-sonnet-4-5-20250514",
+        model="claude-sonnet-4-20250514",
         max_tokens=4000,
         system=SCRIPT_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}]
@@ -270,7 +271,7 @@ def main():
     script = generate_script(client, args.topic, outline, args.style, args.length)
 
     # Save script
-    slug = args.topic.lower().replace(" ", "_")[:40]
+    slug = re.sub(r'[^a-z0-9]+', '_', args.topic.lower())[:40].strip('_')
     script_path = f".tmp/scripts/{slug}_v1.md"
     with open(script_path, "w") as f:
         f.write(script)

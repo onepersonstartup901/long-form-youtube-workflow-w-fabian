@@ -129,6 +129,7 @@ def save_state(video_id: str, state: dict):
 
 
 STAGE_TIMEOUTS = {
+    "visuals": 1200,        # 20 min for downloading/generating visuals
     "assembly": 1800,       # 30 min for video render
     "uploading": 1800,      # 30 min for upload
     "post_production": 1200, # 20 min for audio enhancement
@@ -208,12 +209,23 @@ def stage_scripting(video_id: str, state: dict) -> bool:
     ] + outline_args)
 
     if success:
-        # Move script to video directory
+        # Move script to video directory — find it by glob since slug
+        # generation may differ between generate_script.py and orchestrator
+        import shutil
+        import glob
+        script_path = video_dir / "script.md"
         slug = _slugify(topic)
         src = TMP_DIR / "scripts" / f"{slug}_v1.md"
-        script_path = video_dir / "script.md"
+        if not src.exists():
+            # Fallback: find any recently created _v1.md matching topic words
+            candidates = sorted(
+                (TMP_DIR / "scripts").glob("*_v1.md"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                src = candidates[0]
         if src.exists():
-            import shutil
             shutil.move(str(src), str(script_path))
 
         # Parse the script
@@ -258,7 +270,8 @@ def stage_visuals(video_id: str, state: dict) -> bool:
     if state.get("skip_ai_images"):
         args.append("--skip-ai")
 
-    success, _ = run_python("gather_visuals.py", args)
+    success, _ = run_python("gather_visuals.py", args,
+                             timeout=STAGE_TIMEOUTS.get("visuals", 600))
     return success
 
 
@@ -291,7 +304,8 @@ def stage_assembly(video_id: str, state: dict) -> bool:
         "--tmp-dir", str(video_dir),
         "--title", state.get("topic", ""),
         "--channel", state.get("channel_name", "AI Tech"),
-    ] + (["--draft"] if state.get("draft") else []))
+    ] + (["--draft"] if state.get("draft") else []),
+        timeout=STAGE_TIMEOUTS.get("assembly", 600))
 
     return success
 
@@ -311,7 +325,7 @@ def stage_post_production(video_id: str, state: dict) -> bool:
         str(assembled),
         str(final),
         "--preset", "voice",
-    ])
+    ], timeout=STAGE_TIMEOUTS.get("post_production", 600))
 
     return success
 
@@ -330,11 +344,19 @@ def stage_metadata(video_id: str, state: dict) -> bool:
     success, _ = run_python("generate_metadata.py", args)
 
     if success:
-        # Move metadata to video dir
+        # Move metadata to video dir — use glob fallback for slug mismatches
+        import shutil
         slug = _slugify(state.get("topic", "video"))
         meta_src = TMP_DIR / "metadata" / f"{slug}.json"
+        if not meta_src.exists():
+            candidates = sorted(
+                (TMP_DIR / "metadata").glob("*.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                meta_src = candidates[0]
         if meta_src.exists():
-            import shutil
             shutil.move(str(meta_src), str(video_dir / "metadata.json"))
 
     return success

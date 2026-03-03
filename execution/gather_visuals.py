@@ -255,6 +255,18 @@ def gather_visuals(
             "source": None,
         }
 
+        # Resume support: skip blocks that already have downloaded files
+        import glob as _glob
+        existing = _glob.glob(os.path.join(visuals_dir, f"block_{block_idx:03d}_*"))
+        if existing and os.path.getsize(existing[0]) > 0:
+            ext = os.path.splitext(existing[0])[1].lower()
+            entry["file_path"] = existing[0]
+            entry["file_type"] = "video" if ext in (".mp4", ".mov", ".webm") else "image"
+            entry["source"] = "cached"
+            manifest.append(entry)
+            print(f"    Cached: {os.path.basename(existing[0])}")
+            continue
+
         if visual_type == "ai_generated" and visual_prompt and not skip_ai:
             # Generate AI image
             filename = f"block_{block_idx:03d}_ai.png"
