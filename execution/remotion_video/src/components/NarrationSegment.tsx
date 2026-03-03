@@ -42,6 +42,7 @@ export const NarrationSegmentView: React.FC<NarrationSegmentProps> = ({
         >
           <OffthreadVideo
             src={staticFile(segment.visual.src)}
+            muted
             style={{
               width: "100%",
               height: "100%",

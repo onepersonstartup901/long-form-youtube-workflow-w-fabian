@@ -79,12 +79,15 @@ export const AnimatedCaption: React.FC<AnimatedCaptionProps> = ({
                 fontWeight: 800,
                 color,
                 transform: `scale(${wordScale})`,
-                transition: "color 0.1s",
                 textShadow: `
                   ${style.captionStrokeWidth}px ${style.captionStrokeWidth}px 0 ${style.captionStrokeColor},
                   -${style.captionStrokeWidth}px ${style.captionStrokeWidth}px 0 ${style.captionStrokeColor},
                   ${style.captionStrokeWidth}px -${style.captionStrokeWidth}px 0 ${style.captionStrokeColor},
-                  -${style.captionStrokeWidth}px -${style.captionStrokeWidth}px 0 ${style.captionStrokeColor}
+                  -${style.captionStrokeWidth}px -${style.captionStrokeWidth}px 0 ${style.captionStrokeColor},
+                  ${style.captionStrokeWidth}px 0 0 ${style.captionStrokeColor},
+                  -${style.captionStrokeWidth}px 0 0 ${style.captionStrokeColor},
+                  0 ${style.captionStrokeWidth}px 0 ${style.captionStrokeColor},
+                  0 -${style.captionStrokeWidth}px 0 ${style.captionStrokeColor}
                 `,
               }}
             >

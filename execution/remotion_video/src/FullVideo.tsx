@@ -9,8 +9,10 @@ import { OutroSequence } from "./components/OutroSequence";
 export const FullVideo: React.FC<AssemblyProps> = (props) => {
   return (
     <AbsoluteFill style={{ backgroundColor: props.style.backgroundColor }}>
-      {/* Audio layer — plays throughout */}
-      <Audio src={staticFile(props.audioSrc)} />
+      {/* Audio layer — only render when audioSrc is provided */}
+      {props.audioSrc ? (
+        <Audio src={staticFile(props.audioSrc)} />
+      ) : null}
 
       {/* Visual layers — rendered in sequence */}
       {props.segments.map((segment, i) => (
@@ -18,6 +20,7 @@ export const FullVideo: React.FC<AssemblyProps> = (props) => {
           key={`${segment.type}-${i}`}
           from={segment.startFrame}
           durationInFrames={segment.durationInFrames}
+          layout="none"
         >
           {segment.type === "intro" && (
             <IntroSequence segment={segment} style={props.style} />

@@ -12,25 +12,30 @@ export const TransitionSlide: React.FC<TransitionSlideProps> = ({
   style,
 }) => {
   const frame = useCurrentFrame();
+  const mid = segment.durationInFrames / 2;
+  const dur = segment.durationInFrames;
 
-  const opacity = (() => {
+  const opacity = interpolate(frame, [0, mid, dur], [0, 1, 0], {
+    extrapolateRight: "clamp",
+  });
+
+  const transitionStyle: React.CSSProperties = (() => {
     switch (segment.transitionStyle) {
+      case "zoom": {
+        const scale = interpolate(frame, [0, mid, dur], [0.6, 1.1, 0.6], {
+          extrapolateRight: "clamp",
+        });
+        return { transform: `scale(${scale})` };
+      }
+      case "wipe": {
+        const translateX = interpolate(frame, [0, mid, dur], [-100, 0, 100], {
+          extrapolateRight: "clamp",
+        });
+        return { transform: `translateX(${translateX}%)` };
+      }
       case "fade":
-        return interpolate(
-          frame,
-          [0, segment.durationInFrames / 2, segment.durationInFrames],
-          [0, 1, 0],
-          { extrapolateRight: "clamp" }
-        );
-      case "zoom":
-      case "wipe":
       default:
-        return interpolate(
-          frame,
-          [0, segment.durationInFrames / 2, segment.durationInFrames],
-          [0, 1, 0],
-          { extrapolateRight: "clamp" }
-        );
+        return {};
     }
   })();
 
@@ -44,6 +49,7 @@ export const TransitionSlide: React.FC<TransitionSlideProps> = ({
         height: "100%",
         backgroundColor: style.backgroundColor,
         opacity,
+        ...transitionStyle,
       }}
     />
   );

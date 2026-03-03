@@ -25,14 +25,15 @@ export const KenBurns: React.FC<KenBurnsProps> = ({ visual, durationInFrames }) 
     }
   })();
 
+  // Use percentage-based pan for noticeable motion (~5% of frame width)
   const translateX = (() => {
     switch (visual.animation) {
       case "pan_left":
-        return interpolate(frame, [0, durationInFrames], [0, -50], {
+        return interpolate(frame, [0, durationInFrames], [2, -3], {
           extrapolateRight: "clamp",
         });
       case "pan_right":
-        return interpolate(frame, [0, durationInFrames], [0, 50], {
+        return interpolate(frame, [0, durationInFrames], [-2, 3], {
           extrapolateRight: "clamp",
         });
       default:
@@ -63,7 +64,7 @@ export const KenBurns: React.FC<KenBurnsProps> = ({ visual, durationInFrames }) 
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          transform: `scale(${scale}) translateX(${translateX}px)`,
+          transform: `scale(${scale}) translateX(${translateX}%)`,
         }}
       />
     </div>

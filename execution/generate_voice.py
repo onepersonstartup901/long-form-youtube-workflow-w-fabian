@@ -140,19 +140,26 @@ def generate_voice(
         # Fallback: generate without timestamps using standard endpoint
         print(f"  Timestamps API failed ({e}), falling back to standard generation...")
 
-        response = client.text_to_speech.convert(
-            voice_id=voice_id,
-            text=combined_text,
-            model_id=model,
-            voice_settings={
-                "stability": stability,
-                "similarity_boost": similarity_boost,
-            },
-        )
+        try:
+            response = client.text_to_speech.convert(
+                voice_id=voice_id,
+                text=combined_text,
+                model_id=model,
+                voice_settings={
+                    "stability": stability,
+                    "similarity_boost": similarity_boost,
+                },
+            )
 
-        with open(audio_path, "wb") as f:
-            for chunk in response:
-                f.write(chunk)
+            with open(audio_path, "wb") as f:
+                for chunk in response:
+                    f.write(chunk)
+        except Exception as fallback_err:
+            # Clean up partial file
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+            print(f"  Fallback TTS also failed: {fallback_err}", file=sys.stderr)
+            sys.exit(1)
 
         # Estimate timestamps from word count and audio duration
         word_timestamps = _estimate_timestamps(combined_text, audio_path)
@@ -210,14 +217,20 @@ def _estimate_timestamps(text: str, audio_path: str) -> list[dict]:
     import subprocess
 
     # Get audio duration
-    cmd = [
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        audio_path,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    duration = float(result.stdout.strip())
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            audio_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        duration = float(result.stdout.strip())
+    except (FileNotFoundError, ValueError):
+        # Rough estimate: assume 150 wpm average
+        word_count = len(text.split())
+        duration = (word_count / 150) * 60
+        print(f"  Warning: ffprobe unavailable, estimating duration from word count")
 
     words_list = text.split()
     if not words_list:
