@@ -131,7 +131,14 @@ PIXABAY_API_KEY            # Stock footage (backup)
 REPLICATE_API_TOKEN        # AI image generation (Flux)
 TELEGRAM_BOT_TOKEN         # Notifications
 TELEGRAM_APPROVER_CHAT_ID  # Approval messages
+PIPELINE_SHEET_ID          # Google Sheet production tracker (optional)
 ```
+
+## Google Sheet Tracker
+
+The pipeline automatically syncs every state change to a Google Sheet when `PIPELINE_SHEET_ID` is set. See `directives/sheet_tracker.md` for setup instructions.
+
+Three tabs: **Pipeline** (video status dashboard), **Content Calendar** (publish planning), **Cost Tracker** (per-video spend). If the env var is not set, tracking is silently skipped.
 
 ## Dependencies
 
