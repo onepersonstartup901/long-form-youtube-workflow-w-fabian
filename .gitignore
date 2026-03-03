@@ -3,6 +3,7 @@
 .env.*
 credentials.json
 token.json
+youtube_token.json
 
 # Temp and cache
 .tmp/
