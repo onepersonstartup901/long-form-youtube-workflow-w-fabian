@@ -26,6 +26,30 @@ CHAT_ID = os.getenv("TELEGRAM_APPROVER_CHAT_ID") or os.getenv("TELEGRAM_GROUP_ID
 API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 
+def _escape_markdown(text: str) -> str:
+    """Escape special chars for Telegram Markdown v1."""
+    for ch in ('_', '*', '`', '['):
+        text = text.replace(ch, f'\\{ch}')
+    return text
+
+
+def _safe_post(url: str, **kwargs) -> dict:
+    """HTTP POST with error handling for Telegram API."""
+    try:
+        resp = httpx.post(url, **kwargs)
+        data = resp.json()
+        if not data.get("ok"):
+            desc = data.get("description", "unknown error")
+            print(f"  Warning: Telegram API error: {desc}")
+        return data
+    except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadTimeout) as e:
+        print(f"  Warning: Telegram network error: {e}")
+        return {}
+    except Exception as e:
+        print(f"  Warning: Telegram request failed: {e}")
+        return {}
+
+
 def send_message(text: str, chat_id: str = None, parse_mode: str = "Markdown") -> dict:
     """Send a message via Telegram bot."""
     cid = chat_id or CHAT_ID
@@ -33,7 +57,7 @@ def send_message(text: str, chat_id: str = None, parse_mode: str = "Markdown") -
         print("Warning: TELEGRAM_BOT_TOKEN or chat ID not configured")
         return {}
 
-    resp = httpx.post(
+    return _safe_post(
         f"{API_BASE}/sendMessage",
         json={
             "chat_id": cid,
@@ -42,7 +66,6 @@ def send_message(text: str, chat_id: str = None, parse_mode: str = "Markdown") -
         },
         timeout=10,
     )
-    return resp.json()
 
 
 def send_document(file_path: str, caption: str = "", chat_id: str = None) -> dict:
@@ -52,13 +75,12 @@ def send_document(file_path: str, caption: str = "", chat_id: str = None) -> dic
         return {}
 
     with open(file_path, "rb") as f:
-        resp = httpx.post(
+        return _safe_post(
             f"{API_BASE}/sendDocument",
             data={"chat_id": cid, "caption": caption},
             files={"document": f},
             timeout=30,
         )
-    return resp.json()
 
 
 def send_video(file_path: str, caption: str = "", chat_id: str = None) -> dict:
@@ -70,19 +92,17 @@ def send_video(file_path: str, caption: str = "", chat_id: str = None) -> dict:
     size_mb = os.path.getsize(file_path) / (1024 * 1024)
     if size_mb > 50:
         return send_message(
-            f"Video too large for Telegram ({size_mb:.0f}MB). "
-            f"File: `{file_path}`",
+            f"Video too large for Telegram ({size_mb:.0f}MB).",
             cid,
         )
 
     with open(file_path, "rb") as f:
-        resp = httpx.post(
+        return _safe_post(
             f"{API_BASE}/sendVideo",
             data={"chat_id": cid, "caption": caption},
             files={"video": f},
             timeout=120,
         )
-    return resp.json()
 
 
 def notify_stage(video_id: str, stage: str, message: str = ""):
@@ -106,7 +126,7 @@ def notify_gate1(video_id: str):
     with open(state_path) as f:
         state = json.load(f)
 
-    topic = state.get("topic", "Unknown")
+    topic = _escape_markdown(state.get("topic", "Unknown"))
 
     # Read script preview
     preview = ""
@@ -149,21 +169,26 @@ def notify_gate2(video_id: str):
     with open(state_path) as f:
         state = json.load(f)
 
-    topic = state.get("topic", "Unknown")
+    topic = _escape_markdown(state.get("topic", "Unknown"))
 
     if final_path.exists():
         size_mb = os.path.getsize(final_path) / (1024 * 1024)
 
         # Get duration
         import subprocess
-        cmd = [
-            "ffprobe", "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            str(final_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        duration = float(result.stdout.strip()) if result.stdout.strip() else 0
+        duration = 0
+        try:
+            cmd = [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(final_path),
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.stdout.strip():
+                duration = float(result.stdout.strip())
+        except (FileNotFoundError, ValueError):
+            pass
 
         text = (
             f"*Video Ready for Review*\n"

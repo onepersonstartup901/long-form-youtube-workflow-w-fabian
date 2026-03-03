@@ -169,6 +169,21 @@ def main():
 
     parsed = parse_script(script_text)
 
+    if args.narration_only:
+        for block in parsed["blocks"]:
+            narration = block.get("narration", "")
+            if narration:
+                print(narration)
+                print()
+        return
+
+    # Always write output if -o specified (even with --validate)
+    if args.output:
+        output = json.dumps(parsed, indent=2)
+        with open(args.output, "w") as f:
+            f.write(output)
+        print(f"Parsed script saved to {args.output}")
+
     if args.validate:
         warnings = validate_script(parsed)
         duration = estimate_duration(parsed)
@@ -184,22 +199,8 @@ def main():
             print("\nScript is valid.")
         return
 
-    if args.narration_only:
-        for block in parsed["blocks"]:
-            narration = block.get("narration", "")
-            if narration:
-                print(narration)
-                print()
-        return
-
-    output = json.dumps(parsed, indent=2)
-
-    if args.output:
-        with open(args.output, "w") as f:
-            f.write(output)
-        print(f"Parsed script saved to {args.output}")
-    else:
-        print(output)
+    if not args.output:
+        print(json.dumps(parsed, indent=2))
 
 
 if __name__ == "__main__":

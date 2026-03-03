@@ -125,14 +125,16 @@ def generate_remotion_captions(
 
     captions = []
     for group in groups:
-        start_frame = int(group["start"] * fps)
-        end_frame = int(group["end"] * fps)
+        start_frame = round(group["start"] * fps)
+        end_frame = round(group["end"] * fps)
 
         words = []
         for wt in group["word_timings"]:
-            word_start = int(wt["start"] * fps)
-            word_end = int(wt["end"] * fps)
-            is_highlight = wt["word"].lower().strip(".,!?;:") in emphasis_set
+            word_start = round(wt["start"] * fps)
+            word_end = round(wt["end"] * fps)
+            # Strip all non-alphanumeric chars for robust emphasis matching
+            cleaned = "".join(c for c in wt["word"].lower() if c.isalnum())
+            is_highlight = cleaned in emphasis_set
 
             words.append({
                 "word": wt["word"],

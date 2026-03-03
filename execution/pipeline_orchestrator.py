@@ -54,42 +54,81 @@ def get_video_dir(video_id: str) -> Path:
     return d
 
 
+def _slugify(topic: str) -> str:
+    """Consistent slug generation for file lookups."""
+    return re.sub(r'[^a-z0-9]+', '_', topic.lower())[:40].strip('_')
+
+
 def load_state(video_id: str) -> dict:
     """Load video state from its state file."""
     state_path = get_video_dir(video_id) / "state.json"
     if state_path.exists():
-        with open(state_path) as f:
-            return json.load(f)
+        try:
+            with open(state_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"  Warning: corrupt state.json for {video_id}: {e}")
+            backup = state_path.with_suffix(".json.bak")
+            if backup.exists():
+                try:
+                    with open(backup) as f:
+                        print(f"  Recovered from backup state")
+                        return json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    pass
     return {}
 
 
 def save_state(video_id: str, state: dict):
-    """Save video state."""
+    """Save video state atomically (write to temp, then rename)."""
     state_path = get_video_dir(video_id) / "state.json"
+    tmp_path = state_path.with_suffix(".json.tmp")
     state["updated_at"] = datetime.now().isoformat()
-    with open(state_path, "w") as f:
+
+    if state_path.exists():
+        backup = state_path.with_suffix(".json.bak")
+        try:
+            import shutil
+            shutil.copy2(str(state_path), str(backup))
+        except OSError:
+            pass
+
+    with open(tmp_path, "w") as f:
         json.dump(state, f, indent=2)
+    os.replace(str(tmp_path), str(state_path))
 
 
-def run_python(script: str, args: list[str], cwd: str = None) -> tuple[bool, str]:
+STAGE_TIMEOUTS = {
+    "assembly": 1800,       # 30 min for video render
+    "uploading": 1800,      # 30 min for upload
+    "post_production": 1200, # 20 min for audio enhancement
+}
+
+
+def run_python(script: str, args: list[str], cwd: str = None,
+               timeout: int = 600) -> tuple[bool, str]:
     """Run a Python execution script."""
     cmd = [sys.executable, str(EXECUTION_DIR / script)] + args
     print(f"  Running: {script} {' '.join(args[:4])}...")
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=cwd or str(PROJECT_ROOT),
-        timeout=600,  # 10 min timeout
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=cwd or str(PROJECT_ROOT),
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        msg = f"Timed out after {timeout}s"
+        print(f"  FAILED: {msg}")
+        return False, msg
 
     if result.returncode != 0:
         print(f"  FAILED: {result.stderr[:500]}")
         return False, result.stderr
 
     if result.stdout:
-        # Print last few lines
         lines = result.stdout.strip().split("\n")
         for line in lines[-5:]:
             print(f"    {line}")
@@ -111,7 +150,7 @@ def stage_research(video_id: str, state: dict) -> bool:
 
     if success:
         # topic_research.py saves to .tmp/outlines/, move to our dir
-        slug = topic.lower().replace(" ", "_")[:40]
+        slug = _slugify(topic)
         src = TMP_DIR / "outlines" / f"{slug}.md"
         if src.exists():
             import shutil
@@ -140,7 +179,7 @@ def stage_scripting(video_id: str, state: dict) -> bool:
 
     if success:
         # Move script to video directory
-        slug = topic.lower().replace(" ", "_")[:40]
+        slug = _slugify(topic)
         src = TMP_DIR / "scripts" / f"{slug}_v1.md"
         script_path = video_dir / "script.md"
         if src.exists():
@@ -262,7 +301,7 @@ def stage_metadata(video_id: str, state: dict) -> bool:
 
     if success:
         # Move metadata to video dir
-        slug = state.get("topic", "video").lower().replace(" ", "_")[:40]
+        slug = _slugify(state.get("topic", "video"))
         meta_src = TMP_DIR / "metadata" / f"{slug}.json"
         if meta_src.exists():
             import shutil
@@ -338,16 +377,21 @@ def advance_video(video_id: str, skip_gates: bool = False) -> str:
             gate_response = video_dir / "gate_response.json"
 
             if gate_response.exists():
-                with open(gate_response) as f:
-                    response = json.load(f)
+                try:
+                    with open(gate_response) as f:
+                        response = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"  Error: malformed gate_response.json: {e}")
+                    print(f"  Delete and recreate: {gate_response}")
+                    return current
 
-                if response.get("decision") == "approved":
+                decision = response.get("decision", "")
+                if decision == "approved":
                     print(f"  Gate approved!")
                     gate_response.unlink()
-                elif response.get("decision") == "rejected":
+                elif decision == "rejected":
                     reason = response.get("reason", "No reason given")
                     print(f"  Gate rejected: {reason}")
-                    # Roll back
                     rollback = "scripting" if current == "gate1_pending" else "assembly"
                     state["status"] = rollback
                     state["feedback"] = reason
@@ -355,7 +399,8 @@ def advance_video(video_id: str, skip_gates: bool = False) -> str:
                     gate_response.unlink()
                     return rollback
                 else:
-                    print(f"  Waiting for gate approval...")
+                    print(f"  Error: unrecognized decision '{decision}' in gate_response.json")
+                    print(f"  Valid values: 'approved' or 'rejected'")
                     return current
             else:
                 print(f"  Waiting for gate approval...")
@@ -450,11 +495,16 @@ def list_videos() -> list[dict]:
     videos = []
     if TMP_DIR.exists():
         for d in sorted(TMP_DIR.iterdir()):
+            if not d.is_dir():
+                continue
             state_file = d / "state.json"
             if state_file.exists():
-                with open(state_file) as f:
-                    state = json.load(f)
-                videos.append(state)
+                try:
+                    with open(state_file) as f:
+                        state = json.load(f)
+                    videos.append(state)
+                except (json.JSONDecodeError, ValueError):
+                    pass
 
     return videos
 

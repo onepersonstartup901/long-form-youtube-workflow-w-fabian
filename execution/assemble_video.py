@@ -21,14 +21,23 @@ REMOTION_DIR = Path(__file__).parent / "remotion_video"
 
 def get_audio_duration(audio_path: str) -> float:
     """Get audio duration in seconds using ffprobe."""
-    cmd = [
-        "ffprobe", "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
-        audio_path,
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return float(result.stdout.strip())
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            audio_path,
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 or not result.stdout.strip():
+            raise ValueError(f"ffprobe failed: {result.stderr[:200]}")
+        return float(result.stdout.strip())
+    except FileNotFoundError:
+        print("  Error: ffprobe not found. Install ffmpeg.", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f"  Error getting audio duration: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def build_assembly_props(
@@ -283,8 +292,8 @@ def render_video(
     Returns:
         True if render succeeded
     """
-    # Write props to temp file
-    props_path = REMOTION_DIR / "props.json"
+    # Write props to video-scoped temp file (prevents race conditions)
+    props_path = REMOTION_DIR / f"props_{os.path.basename(output_path).replace('.mp4','')}.json"
     with open(props_path, "w") as f:
         json.dump(props, f)
 
